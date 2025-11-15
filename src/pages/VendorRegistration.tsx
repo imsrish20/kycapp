@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from '../hooks/useNavigate';
-import { Upload } from 'lucide-react';
+import { Upload, X } from 'lucide-react';
 
 export default function VendorRegistration() {
   const { user } = useAuth();
@@ -25,10 +25,11 @@ export default function VendorRegistration() {
   });
 
   const [documents, setDocuments] = useState<{
-    gst?: string;
-    pan?: string;
-    registration?: string;
+    gst?: { file: File; url: string };
+    pan?: { file: File; url: string };
+    registration?: { file: File; url: string };
   }>({});
+  const [uploadingDocs, setUploadingDocs] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({
@@ -40,12 +41,35 @@ export default function VendorRegistration() {
   const handleDocumentUpload = (type: 'gst' | 'pan' | 'registration', e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = `simulated_upload_${type}_${Date.now()}_${file.name}`;
+      const maxSize = 5 * 1024 * 1024;
+      if (file.size > maxSize) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+      if (!allowedTypes.includes(file.type)) {
+        alert('Only PDF, JPG, and PNG files are allowed');
+        return;
+      }
+
+      const url = URL.createObjectURL(file);
       setDocuments(prev => ({
         ...prev,
-        [type]: url
+        [type]: { file, url }
       }));
     }
+  };
+
+  const handleRemoveDocument = (type: 'gst' | 'pan' | 'registration') => {
+    setDocuments(prev => {
+      const newDocs = { ...prev };
+      if (newDocs[type]) {
+        URL.revokeObjectURL(newDocs[type]!.url);
+        delete newDocs[type];
+      }
+      return newDocs;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,17 +92,36 @@ export default function VendorRegistration() {
       if (vendorError) throw vendorError;
 
       if (vendor && Object.keys(documents).length > 0) {
-        const documentInserts = Object.entries(documents).map(([type, url]) => ({
-          vendor_id: vendor.id,
-          document_type: type,
-          document_url: url
-        }));
+        setUploadingDocs(true);
+        const documentInserts = [];
+
+        for (const [type, docData] of Object.entries(documents)) {
+          const file = docData.file;
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${user.id}/${vendor.id}/${type}_${Date.now()}.${fileExt}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('vendor-documents')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: false
+            });
+
+          if (uploadError) throw uploadError;
+
+          documentInserts.push({
+            vendor_id: vendor.id,
+            document_type: type,
+            document_url: fileName
+          });
+        }
 
         const { error: docsError } = await supabase
           .from('vendor_documents')
           .insert(documentInserts);
 
         if (docsError) throw docsError;
+        setUploadingDocs(false);
       }
 
       setSuccess(true);
@@ -89,6 +132,7 @@ export default function VendorRegistration() {
       setError(err instanceof Error ? err.message : 'Failed to submit application');
     } finally {
       setLoading(false);
+      setUploadingDocs(false);
     }
   };
 
@@ -304,7 +348,16 @@ export default function VendorRegistration() {
                       />
                     </label>
                     {documents.gst && (
-                      <span className="text-sm text-green-600">Uploaded</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-green-600">{documents.gst.file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDocument('gst')}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -325,7 +378,16 @@ export default function VendorRegistration() {
                       />
                     </label>
                     {documents.pan && (
-                      <span className="text-sm text-green-600">Uploaded</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-green-600">{documents.pan.file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDocument('pan')}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -346,7 +408,16 @@ export default function VendorRegistration() {
                       />
                     </label>
                     {documents.registration && (
-                      <span className="text-sm text-green-600">Uploaded</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-green-600">{documents.registration.file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDocument('registration')}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -363,10 +434,10 @@ export default function VendorRegistration() {
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || uploadingDocs}
                 className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Submitting...' : 'Submit Application'}
+                {uploadingDocs ? 'Uploading documents...' : loading ? 'Submitting...' : 'Submit Application'}
               </button>
             </div>
           </form>

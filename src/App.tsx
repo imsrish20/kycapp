@@ -26,15 +26,23 @@ function Router() {
     return <Login />;
   }
 
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-xl text-gray-600">Loading profile...</div>
+      </div>
+    );
+  }
+
   switch (path) {
     case '/dashboard':
       return <Dashboard />;
     case '/vendor/register':
-      return profile?.role === 'vendor' ? <VendorRegistration /> : <Dashboard />;
+      return profile.role === 'vendor' ? <VendorRegistration /> : <Dashboard />;
     case '/vendor/status':
-      return profile?.role === 'vendor' ? <VendorStatus /> : <Dashboard />;
+      return profile.role === 'vendor' ? <VendorStatus /> : <Dashboard />;
     case '/admin/dashboard':
-      return profile?.role === 'admin' ? <AdminDashboard /> : <Dashboard />;
+      return profile.role === 'admin' ? <AdminDashboard /> : <Dashboard />;
     default:
       return <Dashboard />;
   }

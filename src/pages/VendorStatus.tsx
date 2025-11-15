@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, Vendor, VendorDocument, AuditLog } from '../lib/supabase';
-import { CheckCircle, XCircle, Clock, FileText } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, FileText, Download } from 'lucide-react';
 
 export default function VendorStatus() {
   const { user } = useAuth();
@@ -9,6 +9,28 @@ export default function VendorStatus() {
   const [documents, setDocuments] = useState<VendorDocument[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const handleDownloadDocument = async (documentUrl: string, documentType: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('vendor-documents')
+        .download(documentUrl);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${documentType}_document`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      alert('Failed to download document');
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -187,16 +209,25 @@ export default function VendorStatus() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Uploaded Documents</h3>
               <div className="space-y-2">
                 {documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <FileText size={20} className="text-blue-600" />
-                    <div>
-                      <p className="font-medium text-gray-900 capitalize">
-                        {doc.document_type} Document
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
-                      </p>
+                  <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <FileText size={20} className="text-blue-600" />
+                      <div>
+                        <p className="font-medium text-gray-900 capitalize">
+                          {doc.document_type} Document
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
+                    <button
+                      onClick={() => handleDownloadDocument(doc.document_url, doc.document_type)}
+                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                    >
+                      <Download size={16} />
+                      Download
+                    </button>
                   </div>
                 ))}
               </div>
